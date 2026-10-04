@@ -471,6 +471,50 @@
         /**
          * 主应用逻辑
          */
+        function findEnclosedCells(matrix) {
+            const height = matrix.length;
+            const width = matrix[0]?.length ?? 0;
+            const exterior = Array.from({ length: height }, () => Array(width).fill(false));
+            const queue = [];
+
+            const addExterior = (row, col) => {
+                if (matrix[row][col] === 0 && !exterior[row][col]) {
+                    exterior[row][col] = true;
+                    queue.push([row, col]);
+                }
+            };
+
+            for (let row = 0; row < height; row++) {
+                addExterior(row, 0);
+                addExterior(row, width - 1);
+            }
+            for (let col = 1; col < width - 1; col++) {
+                addExterior(0, col);
+                addExterior(height - 1, col);
+            }
+
+            for (let head = 0; head < queue.length; head++) {
+                const [row, col] = queue[head];
+                for (const [nextRow, nextCol] of [
+                    [row - 1, col],
+                    [row + 1, col],
+                    [row, col - 1],
+                    [row, col + 1],
+                ]) {
+                    if (
+                        nextRow >= 0 && nextRow < height &&
+                        nextCol >= 0 && nextCol < width
+                    ) {
+                        addExterior(nextRow, nextCol);
+                    }
+                }
+            }
+
+            return matrix.map((row, rowIndex) => row.map((cell, colIndex) =>
+                cell === 0 && !exterior[rowIndex][colIndex] ? 1 : 0
+            ));
+        }
+
         class App {
             constructor() {
                 this.size = 20;
@@ -607,81 +651,20 @@
                 // 清除之前的内部样式
                 const cells = document.querySelectorAll('.cell.inner');
                 cells.forEach(c => c.classList.remove('inner'));
-
-                // 检查是否有任何边界，如果没有，则不算闭合
-                let hasBoundary = this.matrix.flat().includes(1);
-                if (!hasBoundary) {
-                    this.updateClosedStatus(false);
-                    return 0;
-                }
-
-                // 构造用于计算的矩阵
-                const h = this.size;
-                const w = this.size;
-                let tempMatrix = this.matrix.map(row => [...row]); // 0: 空, 1: 墙
-                
-                // 洪水填充队列
-                let queue = [];
-
-                // 将所有边缘的0加入队列
-                for (let i = 0; i < h; i++) {
-                    if (tempMatrix[i][0] === 0) queue.push([i, 0]);
-                    if (tempMatrix[i][w-1] === 0) queue.push([i, w-1]);
-                }
-                for (let j = 1; j < w - 1; j++) {
-                    if (tempMatrix[0][j] === 0) queue.push([0, j]);
-                    if (tempMatrix[h-1][j] === 0) queue.push([h-1, j]);
-                }
-
-                // 执行填充：将外部的 0 标记为 2
-                const visited = new Set();
-                while (queue.length > 0) {
-                    const [r, c] = queue.shift();
-                    const key = `${r},${c}`;
-                    
-                    if (visited.has(key)) continue;
-                    visited.add(key);
-                    
-                    if (r >= 0 && r < h && c >= 0 && c < w) {
-                        if (tempMatrix[r][c] === 0) {
-                            tempMatrix[r][c] = 2; // 标记为外部
-                            // 扩散
-                            queue.push([r+1, c]);
-                            queue.push([r-1, c]);
-                            queue.push([r, c+1]);
-                            queue.push([r, c-1]);
-                        }
-                    }
-                }
-
-                // 统计剩下的 0 (内部区域) 并渲染
+                const innerMatrix = findEnclosedCells(this.matrix);
                 let innerCount = 0;
-                let isClosed = true;
-
-                // 这里的逻辑：如果有外部填充能触及到的 0 变成了 2。
-                // 剩下的 0 就是内部。
-                // 如果根本没有内部区域（全是墙或全是外部），则 innerCount 为 0。
-                
-                // 特殊判断：如果外部水流能灌满所有非墙区域，说明没闭合？
-                // 其实只要有 0 存在，就说明有闭合区域。
-                
-                for (let i = 0; i < h; i++) {
-                    for (let j = 0; j < w; j++) {
-                        if (tempMatrix[i][j] === 0 && this.matrix[i][j] !== 1) {
+                for (let i = 0; i < this.size; i++) {
+                    for (let j = 0; j < this.size; j++) {
+                        if (innerMatrix[i][j] === 1) {
                             innerCount++;
-                            // 渲染
                             const index = i * this.size + j;
                             this.gridEl.children[index].classList.add('inner');
                         }
                     }
                 }
 
-                // 判定“是否闭合”：只有当找到了内部区域，或者整个图被填满了墙（虽然罕见），才算闭合有意义
-                // 但在建筑学定义里，如果没有围合出任何面积，就是未闭合（或者闭合区域为0）
                 this.updateClosedStatus(innerCount > 0);
-                
-                // 返回内部矩阵供导出
-                return tempMatrix.map(row => row.map(val => val === 0 ? 1 : 0)); // 0(内部)转为1，其他为0
+                return innerMatrix;
             }
 
             updateClosedStatus(isClosed) {
@@ -735,26 +718,14 @@
                 // 让我们更专业一点：导出一个包含元数据的对象，或者保持原版纯矩阵兼容性。
                 // 为了兼容原版逻辑：导出矩阵，1=实体(墙+内部)，0=外部
                 
-                // 计算内部矩阵 (0是内部)
                 const h = this.size;
                 const w = this.size;
-                let tempMatrix = this.matrix.map(row => [...row]);
-                // ... 重复洪水填充逻辑 ... (为了代码简洁，直接利用DOM状态反推)
-                
-                // 从DOM反推最终矩阵 (这是最快的方法，因为视图已经计算好了)
-                const cells = this.gridEl.children;
+                const innerMatrix = findEnclosedCells(this.matrix);
                 const finalMatrix = [];
                 for(let i=0; i<h; i++){
                     const row = [];
                     for(let j=0; j<w; j++){
-                        const index = i*w+j;
-                        const cell = cells[index];
-                        // 如果是边界(1) 或者 内部(inner)，在导出中都算作 1 (建筑覆盖区)
-                        if(cell.classList.contains('boundary') || cell.classList.contains('inner')) {
-                            row.push(1);
-                        } else {
-                            row.push(0);
-                        }
+                        row.push(this.matrix[i][j] === 1 || innerMatrix[i][j] === 1 ? 1 : 0);
                     }
                     finalMatrix.push(row);
                 }
