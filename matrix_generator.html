@@ -441,6 +441,25 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+        function validateImportedMatrix(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('矩阵必须是非空二维数组');
+            }
+
+            const size = data.length;
+            const matrix = data.map((row) => {
+                if (!Array.isArray(row) || row.length !== size) {
+                    throw new Error('矩阵必须是方阵，且每行长度必须等于矩阵行数');
+                }
+                if (!row.every((cell) => cell === 0 || cell === 1)) {
+                    throw new Error('矩阵单元格只能是数字 0 或 1');
+                }
+                return row.slice();
+            });
+
+            return matrix;
+        }
+
         /**
          * 状态管理与历史记录类
          */
@@ -746,34 +765,32 @@
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
-                        const data = JSON.parse(e.target.result);
-                        if (Array.isArray(data) && data.length > 0) {
-                            this.saveState();
-                            const newSize = data.length;
-                            // 简单的兼容性检查
-                            if (newSize !== 10 && newSize !== 20) {
-                                if(!confirm(`导入的矩阵大小 (${newSize}x${newSize}) 与标准预设不符，是否继续？`)) return;
-                            }
-                            
-                            this.size = newSize;
-                            // 更新UI选择框
-                            const select = document.getElementById('gridSizeSelect');
-                            if(select.querySelector(`option[value="${newSize}"]`)){
-                                select.value = newSize;
-                            }
-
-                            // 这里的导入逻辑稍微复杂，因为导出的是 (墙+内)，导入回来我们只知道覆盖区。
-                            // 无法区分墙和内部。
-                            // 假设导入的是纯边界数据？或者不仅是边界。
-                            // 既然这是“边界绘制器”，导入的应该最好是边界。
-                            // 如果导入的是实心块，我们只能把它全部当做边界处理，然后用户自己擦除内部？
-                            // 这里简化处理：将所有 1 视为边界。
-                            this.matrix = data; 
-                            
-                            this.renderGrid(); // 重建 Grid DOM (大小可能变了)
-                            this.updateStats();
-                            this.showToast('布局导入成功');
+                        const matrix = validateImportedMatrix(JSON.parse(e.target.result));
+                        const newSize = matrix.length;
+                        // 简单的兼容性检查
+                        if (newSize !== 10 && newSize !== 20) {
+                            if(!confirm(`导入的矩阵大小 (${newSize}x${newSize}) 与标准预设不符，是否继续？`)) return;
                         }
+
+                        this.saveState();
+                        this.size = newSize;
+                        // 更新UI选择框
+                        const select = document.getElementById('gridSizeSelect');
+                        if(select.querySelector(`option[value="${newSize}"]`)){
+                            select.value = newSize;
+                        }
+
+                        // 这里的导入逻辑稍微复杂，因为导出的是 (墙+内)，导入回来我们只知道覆盖区。
+                        // 无法区分墙和内部。
+                        // 假设导入的是纯边界数据？或者不仅是边界。
+                        // 既然这是“边界绘制器”，导入的应该最好是边界。
+                        // 如果导入的是实心块，我们只能把它全部当做边界处理，然后用户自己擦除内部？
+                        // 这里简化处理：将所有 1 视为边界。
+                        this.matrix = matrix;
+
+                        this.renderGrid(); // 重建 Grid DOM (大小可能变了)
+                        this.updateStats();
+                        this.showToast('布局导入成功');
                     } catch (err) {
                         this.showToast('文件格式错误', 'error');
                     }
